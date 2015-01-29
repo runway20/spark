@@ -32,6 +32,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import textwrap
 import time
 import urllib2
 import warnings
@@ -675,29 +676,39 @@ def setup_spark_cluster(master, opts):
         print "Ganglia started at http://%s:5080/ganglia" % master
 
 
-def is_ssh_available(host, opts):
+def is_ssh_available(host, opts, print_ssh_output=False):
     """
     Check if SSH is available on a host.
     """
-    try:
-        with open(os.devnull, 'w') as devnull:
-            ret = subprocess.check_call(
-                ssh_command(opts) + ['-t', '-t', '-o', 'ConnectTimeout=3',
-                                     '%s@%s' % (opts.user, host), stringify_command('true')],
-                stdout=devnull,
-                stderr=devnull
-            )
-        return ret == 0
-    except subprocess.CalledProcessError as e:
-        return False
+    s = subprocess.Popen(
+        ssh_command(opts) + ['-t', '-t', '-o', 'ConnectTimeout=3',
+                             '%s@%s' % (opts.user, host), stringify_command('true')],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT  # we pipe stderr through stdout to preserve output order
+    )
+    cmd_output = s.communicate()[0]  # [1] is stderr, which we redirected to stdout
+
+    if s.returncode != 0 and print_ssh_output:
+        print textwrap.dedent("""\
+            Warning: SSH connection error. (This could be temporary.)
+            Host: {h}
+            SSH return code: {r}
+            SSH output: {o}
+        """).format(
+            h=host,
+            r=s.returncode,
+            o=cmd_output
+        )
+
+    return s.returncode == 0
 
 
-def is_cluster_ssh_available(cluster_instances, opts):
+def is_cluster_ssh_available(cluster_instances, opts, print_ssh_output=False):
     """
     Check if SSH is available on all the instances in a cluster.
     """
     for i in cluster_instances:
-        if not is_ssh_available(host=i.ip_address, opts=opts):
+        if not is_ssh_available(host=i.ip_address, opts=opts, print_ssh_output=print_ssh_output):
             return False
     else:
         return True
@@ -713,10 +724,7 @@ def wait_for_cluster_state(conn, opts, cluster_instances, cluster_state):
            'running', 'terminated', etc.
            (would be nice to replace this with a proper enum: http://stackoverflow.com/a/1695250)
     """
-    sys.stdout.write(
-        "Waiting for cluster to enter '{s}' state.".format(s=cluster_state)
-    )
-    sys.stdout.flush()
+    print "Waiting for cluster to enter '{s}' state...".format(s=cluster_state)
 
     start_time = datetime.now()
     num_attempts = 0
@@ -733,18 +741,13 @@ def wait_for_cluster_state(conn, opts, cluster_instances, cluster_state):
             if all(i.state == 'running' for i in cluster_instances) and \
                all(s.system_status.status == 'ok' for s in statuses) and \
                all(s.instance_status.status == 'ok' for s in statuses) and \
-               is_cluster_ssh_available(cluster_instances, opts):
+               is_cluster_ssh_available(cluster_instances, opts, print_ssh_output=True):
                 break
         else:
             if all(i.state == cluster_state for i in cluster_instances):
                 break
 
         num_attempts += 1
-
-        sys.stdout.write(".")
-        sys.stdout.flush()
-
-    sys.stdout.write("\n")
 
     end_time = datetime.now()
     print "Cluster is now in '{s}' state. Waited {t} seconds.".format(
