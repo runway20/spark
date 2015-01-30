@@ -689,7 +689,7 @@ def is_ssh_available(host, opts, print_ssh_output=False):
     cmd_output = s.communicate()[0]  # [1] is stderr, which we redirected to stdout
 
     if s.returncode != 0 and print_ssh_output:
-        print textwrap.dedent("""\
+        print textwrap.dedent("""
             Warning: SSH connection error. (This could be temporary.)
             Host: {h}
             SSH return code: {r}
@@ -724,7 +724,10 @@ def wait_for_cluster_state(conn, opts, cluster_instances, cluster_state):
            'running', 'terminated', etc.
            (would be nice to replace this with a proper enum: http://stackoverflow.com/a/1695250)
     """
-    print "Waiting for cluster to enter '{s}' state...".format(s=cluster_state)
+    sys.stdout.write(
+        "Waiting for cluster to enter '{s}' state.".format(s=cluster_state)
+    )
+    sys.stdout.flush()
 
     start_time = datetime.now()
     num_attempts = 0
@@ -748,6 +751,11 @@ def wait_for_cluster_state(conn, opts, cluster_instances, cluster_state):
                 break
 
         num_attempts += 1
+
+        sys.stdout.write(".")
+        sys.stdout.flush()
+
+    sys.stdout.write("\n")
 
     end_time = datetime.now()
     print "Cluster is now in '{s}' state. Waited {t} seconds.".format(
