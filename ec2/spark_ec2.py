@@ -689,7 +689,9 @@ def is_ssh_available(host, opts, print_ssh_output=False):
     cmd_output = s.communicate()[0]  # [1] is stderr, which we redirected to stdout
 
     if s.returncode != 0 and print_ssh_output:
+        # extra leading newline is for ....... in wait_for_cluster_state()
         print textwrap.dedent("""
+            
             Warning: SSH connection error. (This could be temporary.)
             Host: {h}
             SSH return code: {r}
@@ -697,7 +699,7 @@ def is_ssh_available(host, opts, print_ssh_output=False):
         """).format(
             h=host,
             r=s.returncode,
-            o=cmd_output
+            o=cmd_output.strip()
         )
 
     return s.returncode == 0
